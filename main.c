@@ -22,18 +22,40 @@
 
 #include <msp430f2002.h>
 
-int dx1;
-int dx2;
-int dx3;
-int dx4;
-int dx5;
-int dx_t[5];
-int dx;
-int flag;
-int fl;
-int usiflag;
-int lock[5];
+  #define   N_CHANNELS    5
+  #define   T_CHANNEL     (20000 / N_CHANNELS)
+  #define   LOCK_CHAN     (isLock = 1)
+  #define   UNLOCK_CHAN   (isLock = 0)
 
+struct SChan
+{
+  int isPulse;
+  int data;
+  int dx;
+};
+
+struct SChan chan[N_CHANNELS];
+
+int indexChan;
+int indexByte;
+int isLock;
+int dx_temp;
+
+void InitPWM(int n)
+{
+  int i;
+  P1DIR = 0;
+  for (i = 0; i < n; i++)
+  {
+    chan[i].isPulse = 1;
+    chan[i].dx = 1000;
+    P1DIR |= 1 << i;
+    P1OUT &= ~(1 << i);
+  }
+  indexChan = 0;
+  indexByte = 0;
+  isLock = 0;
+}
 
 void main(void)
 {
@@ -43,18 +65,11 @@ void main(void)
   BCSCTL1 = CALBC1_1MHZ;
   DCOCTL = CALDCO_1MHZ;
 
-  // P1OUT =  0x10;                        // P1.4 set, else reset
-  // P1REN |= 0x10;                        // P1.4 pullup
-  // P1DIR = 0x01;                         // P1.0 output, else input
-  //USICTL0 |= USIPE7 + USIPE6 + USIPE5 + USIOE; // Port, SPI slave
   USICTL0 |= USIPE7 + USIPE5 + USIOE; // Port, SPI slave
   USICTL1 |= USIIE;                     // Counter interrupt, flag remains set
   USICTL0 &= ~USISWRST;                 // USI released for operation
   USISRL = 0xFE;
   USICNT = 8;
-
-  P1DIR = BIT0 | BIT1 | BIT2 | BIT3 | BIT4;
-  P1OUT &= ~(BIT0 | BIT1 | BIT2 | BIT3 | BIT4);
 
   TACCR0 = 1000;
   // Разрешаем прерывание таймера по достижению значения CCR0.
@@ -65,148 +80,44 @@ void main(void)
                    // MC_1 - режим прямого счёта (до TACCR0)
                    // TACLR - начальное обнуление таймера 
 
-  dx = 1; 
-  flag = 0;
-  usiflag = 0;
-  lock[0] = 0;
-  lock[1] = 0;
-  lock[2] = 0;
-  lock[3] = 0;
-  lock[4] = 0;
-  _BIS_SR(GIE);
+  InitPWM(N_CHANNELS);
+  P1DIR |= BIT6;
+  P1OUT &= ~BIT6;
 
-  dx1 = 1000;
-  dx2 = 2000;
-  dx3 = 1000;
-  dx4 = 2000;
-  dx5 = 1000;
-
-  // P1OUT &= ~0x01;
-
-  // _BIS_SR(LPM0_bits + GIE);             // Enter LPM0 w/ interrupt
-
-  
-  fl = 0;
-  while(1)
-  {
-  }
-
+  _BIS_SR(LPM0_bits + GIE);             // Enter LPM0 w/ interrupt
+  while(1);
 }
 
 #pragma vector=USI_VECTOR
-
 __interrupt void universal_serial_interface(void)
-
 {
+  int data;
+  data = USISRL & 0xFF;
 
-int i;
-  i = USISRL & 0xFF;
-
-    switch(usiflag)
+  if (indexByte <= 1 && data == 0xFF) 
+  {
+    indexByte++;
+  }
+  else
+  if ((indexByte < (N_CHANNELS * 2 + 1)) && indexByte > 1)
+  {
+    if (!(indexByte % 2))
     {
-      case 0:
-      {
-          if (i == 0xFF)
-          {
-            usiflag = 1;
-          }
-          USISRL = 0xFE;
-          USICNT = 8;
-          break;
-      }
-      case 1:
-      {
-          if (i == 0xFF)
-          {
-            usiflag = 2;
-            break;
-          }
-          else
-            usiflag = 0;
-          break;
-      }
-      case 2:
-      {   
-        //dx1 = i << 8;
-        dx_t[0] = i << 8;
-        usiflag = 3;
-        break;
-      }
-      case 3:
-      {   
-        if (!lock[0])
-          // dx1 += i;
-          dx1 = dx_t[0] + i;
-        usiflag = 4;
-        break;
-      }
-      case 4:
-      {
-        // dx2 = i << 8;
-        dx_t[1] = i << 8;
-        usiflag = 5;
-        break;
-      }
-      case 5:
-      {
-        if (!lock[1])
-          // dx2 += i;
-          dx2 = dx_t[1] + i;
-        usiflag = 6;
-        break;
-      }
-      case 6:
-      {
-        // dx3 = i << 8;
-        dx_t[2] = i << 8;
-        usiflag = 7;
-        break;
-      }
-      case 7:
-      {
-        if (!lock[2])
-          dx3 = dx_t[2] + i;
-        usiflag = 8;
-        break;
-      }
-      case 8:
-      {
-        // dx4 = i << 8;
-        dx_t[3] = i << 8;
-        usiflag = 9;
-        break;
-      }
-      case 9:
-      {
-        if (!lock[3])
-          // dx4 += i;
-          dx4 = dx_t[3] + i;
-        usiflag = 10;
-        break;
-      }
-      case 10:
-      {
-        // dx5 = i << 8;
-        dx_t[4] = i << 8;
-        usiflag = 11;
-        break;
-      }
-      case 11:
-      {
-        if (!lock[4])
-          // dx5 += i;
-          dx5 = dx_t[4] + i;
-        usiflag = 0;
-        break;
-      }
-
+      dx_temp = data << 8;
     }
-    USISRL = 0xFE;
-    USICNT = 8;
-  
+    else
+    {
+      LOCK_CHAN;
+      chan[(indexByte - 3) / 2].dx = dx_temp + data;
+      UNLOCK_CHAN;
+    }
+    indexByte++;
+  }
+  else indexByte = 0;
 
+  USISRL = 0xFE;
+  USICNT = 8;
 }
-
 
 // 
 // Обработчики прерываний
@@ -214,102 +125,20 @@ int i;
 #pragma vector = TIMERA0_VECTOR  
 __interrupt void CCR0_ISR(void)
 {
-  switch(dx)
+  if (!isLock) chan[indexChan].data = chan[indexChan].dx;
+  if (chan[indexChan].isPulse)
   {
-    case 1:
-    {
-      if (!flag)
-      {
-        lock[0] = 1;
-        flag = 1;
-        P1OUT |= BIT0;
-        TACCR0 = dx1;
-      }
-      else
-      {
-        flag = 0;
-        P1OUT &= ~BIT0;
-        dx = 2;
-        TACCR0 = 4000 - dx1;
-        lock[0] = 0;
-      }
-      break;
-    }   
-    case 2:
-    {
-      if (!flag)
-      {
-        lock[1] = 1;
-        flag = 1;
-        P1OUT |= BIT1;
-        TACCR0 = dx2;
-      }
-      else
-      {
-        flag = 0;
-        P1OUT &= ~BIT1;
-        dx = 3;
-        TACCR0 = 4000 - dx2;
-        lock[1] = 0;
-      }
-      break;
-    }
-    case 3:
-    {
-      if (!flag)
-      {
-        lock[2] = 1;
-        flag = 1;
-        P1OUT |= BIT2;
-        TACCR0 = dx3;
-      }
-      else
-      {
-        flag = 0;
-        P1OUT &= ~BIT2;
-        dx = 4;
-        TACCR0 = 4000 - dx3;
-        lock[2] = 0;
-      }
-      break;
-    }
-    case 4:
-    {
-      if (!flag)
-      {
-        lock[3] = 1;
-        flag = 1;
-        P1OUT |= BIT3;
-        TACCR0 = dx4;
-      }
-      else
-      {
-        flag = 0;
-        P1OUT &= ~BIT3;
-        dx = 5;
-        TACCR0 = 4000 - dx4;
-        lock[3] = 0;
-      }
-      break;
-    }
-    case 5:
-    {
-      if (!flag)
-      {
-        lock[4] = 1;
-        flag = 1;
-        P1OUT |= BIT4;
-        TACCR0 = dx5;
-      }
-      else
-      {
-        flag = 0;
-        P1OUT &= ~BIT4;
-        dx = 1;
-        TACCR0 = 4000 - dx5;
-        lock[4] = 0;
-      }
-      break;
-    }
+    chan[indexChan].isPulse = 0;
+    P1OUT |= 0x01 << (indexChan);
+    TACCR0 = chan[indexChan].data;
   }
+  else
+  {
+    chan[indexChan].isPulse = 1;
+    P1OUT &= ~(0x01 << (indexChan));
+
+    if (indexChan == N_CHANNELS - 1) indexChan = 0; 
+    else indexChan++;
+    TACCR0 = T_CHANNEL - chan[indexChan].data;
+  }  
 } // CCR0_ISR
