@@ -59,7 +59,11 @@ void InitPWM(int n)
 
 void main(void)
 {
-  WDTCTL = WDTPW + WDTHOLD;             // Stop watchdog timer
+  // WDTCTL = WDTPW + WDTHOLD;             // Stop watchdog timer
+
+  // Watchdog автоматически
+  // перезапустит систему через 32ms.
+  WDTCTL = WDT_MRST_32;
 
   // Устанавливаем частоту DCO на калиброванные 1 MHz.
   BCSCTL1 = CALBC1_1MHZ;
@@ -143,5 +147,8 @@ __interrupt void CCR0_ISR(void)
     if (indexChan == N_CHANNELS - 1) indexChan = 0; 
     else indexChan++;
     TACCR0 = T_CHANNEL - chan[indexChan].data;
+    
+    // Сброс таймера watchdog в ноль.
+    WDTCTL = WDTPW + WDTCNTCL;
   }  
 } // CCR0_ISR
